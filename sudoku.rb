@@ -185,6 +185,11 @@ def bench
   t2 - t1
 end
 
+if ARGV.empty?
+  $stderr.puts "Usage: ruby #{__FILE__} <input_file>"
+  exit 1
+end
+
 File.open(ARGV[0]).each_line do |line|
   bench { Sudoku::Board.new(line.chomp).solution.print_board }.tap do |time|
     puts "Time: %0.5fs\n\n" % [time]

@@ -23,7 +23,19 @@ module Sudoku
     end
 
     def impossible?
-      unsolved? && possible_values.empty?
+      unsolved? && no_possible_values?
+    end
+
+    def no_possible_values?
+      possible_values_count == 0
+    end
+
+    def one_possible_value?
+      possible_values_count == 1
+    end
+
+    def possible_values_count
+      possible_values.count
     end
 
     def possible_values
@@ -39,7 +51,7 @@ module Sudoku
     end
 
     def column
-      board.column col_num
+      board.column(col_num)
     end
 
     def column_values
@@ -47,7 +59,7 @@ module Sudoku
     end
 
     def grid
-      board.grid grid_num
+      board.grid(grid_num)
     end
 
     def grid_values
@@ -81,19 +93,21 @@ module Sudoku
       @grids   = {}
 
       @cells = parse_cells(cells).freeze
+
+      # Basic idea: fill in the first cell with one possible value, if it
+      # exists, otherwise fill in the cell with the fewest possible values
       @cells.each do |cell|
         next if cell.solved?
 
         @guess_cell ||= cell
 
-        if cell.possible_values.size == 1
+        if cell.one_possible_value?
           @guess_cell = cell
           break
         else
-          @guess_cell = [@guess_cell, cell].min_by { |c| c.possible_values.size }
+          @guess_cell = [@guess_cell, cell].min_by(&:possible_values_count)
         end
       end
-
     end
 
     def row(row_num)
@@ -153,19 +167,6 @@ module Sudoku
       end
     end
 
-    def print_board
-      puts "-"*21
-
-      (0...DIMENSION).each_slice(DIMENSION/3) do |(*args)|
-        args.each do |i|
-          puts(row(i).each_slice(DIMENSION/3).map do |slice|
-            slice.map(&:value).join(' ')
-          end.join(' | '))
-        end
-        puts "-"*21
-      end
-    end
-
     private
     def parse_cells(cells)
       if cells.is_a? String
@@ -177,21 +178,43 @@ module Sudoku
   end
 end
 
-def bench
-  t1 = Time.now
-  result = yield
-  t2 = Time.now
+def print_board(board, dimension)
+  grid_width = dimension / 3
 
-  t2 - t1
-end
+  puts "-" * 21
 
-if ARGV.empty?
-  $stderr.puts "Usage: ruby #{__FILE__} <input_file>"
-  exit 1
-end
+  (0...dimension).each_slice(grid_width) do |(*args)|
+    args.each do |i|
+      puts(board.row(i).each_slice(grid_width).map do |slice|
+        slice.map(&:value).join(' ')
+      end.join(' | '))
+    end
 
-File.open(ARGV[0]).each_line do |line|
-  bench { Sudoku::Board.new(line.chomp).solution.print_board }.tap do |time|
-    puts "Time: %0.5fs\n\n" % [time]
+    puts "-" * 21
   end
+end
+
+def print_solution(board)
+  print_board(board.solution, Sudoku::DIMENSION)
+end
+
+if __FILE__ == $PROGRAM_NAME
+  require_relative "reporting"
+
+  if ARGV[0] == '--help'
+    $stderr.puts "Usage: "
+    $stderr.puts "  ruby #{$PROGRAM_NAME} <input_file>  # Read from <input_file>"
+    $stderr.puts "  ruby #{$PROGRAM_NAME} -             # Read from STDIN"
+    exit 1
+  end
+
+  times = ARGF.each_line.map do |line|
+    board = Sudoku::Board.new(line.chomp)
+
+    bench { print_solution(board) }.tap do |time|
+      printf("Time: %0.3fms\n\n", time)
+    end
+  end
+
+  printf("Avg. Time: %0.3fms +/- %0.3fms\n", avg(times), margin_of_error(times))
 end
